@@ -492,139 +492,132 @@ namespace AUHelpers
                                                                                               RelativePath::projectFolder); }
 
     static bool isExporterSupported (ProjectExporter& exporter)   { return exporter.isXcode(); }
+
+	static void fixMissingAUValues (ProjectExporter& exporter)
+    {
+        if (getAUFolder (exporter).toString().isEmpty())
+        {
+			getAUFolder (exporter) = "~/SDKs/AU";
+        }
+		
+        fixMissingXcodePostBuildScript (exporter);
+    }
+	
+	static void addExtraSearchPaths (ProjectExporter& exporter)
+    {
+		const RelativePath publicUtilityPath = getAUFolderPath(exporter).getChildFile("PublicUtility");
+		const RelativePath auPublicPath = getAUFolderPath(exporter).getChildFile("AudioUnits").getChildFile("AUPublic");
+		const RelativePath auPublicAUBasePath = auPublicPath.getChildFile("AUBase");
+		const RelativePath auPublicUtilityPath = auPublicPath.getChildFile("Utility");
+		
+		exporter.extraSearchPaths.add (publicUtilityPath.toUnixStyle());
+		exporter.extraSearchPaths.add (auPublicUtilityPath.toUnixStyle());
+		exporter.extraSearchPaths.add (auPublicAUBasePath.toUnixStyle());
+    }
 	
     static inline void prepareExporter (ProjectExporter& exporter, ProjectSaver& projectSaver)
     {
-        writePluginCharacteristicsFile (projectSaver);
-
-        if (exporter.isXcode())
+		if (isExporterSupported (exporter))
         {
-/*
-            exporter.extraSearchPaths.add ("$(DEVELOPER_DIR)/Extras/CoreAudio/PublicUtility");
-            exporter.extraSearchPaths.add ("$(DEVELOPER_DIR)/Extras/CoreAudio/AudioUnits/AUPublic/Utility");
-            exporter.extraSearchPaths.add ("$(DEVELOPER_DIR)/Extras/CoreAudio/AudioUnits/AUPublic/AUBase");
-*/
-			const RelativePath publicUtilityPath = getAUFolderPath(exporter).getChildFile("PublicUtility");
-			const RelativePath auPublicPath = getAUFolderPath(exporter).getChildFile("AudioUnits").getChildFile("AUPublic");
-			const RelativePath auPublicAUBasePath = auPublicPath.getChildFile("AUBase");
-			const RelativePath auPublicAUCarbonViewBasePath = auPublicPath.getChildFile("AUCarbonViewBase");
-			const RelativePath auPublicAUViewBasePath = auPublicPath.getChildFile("AUViewBase");
-			const RelativePath auPublicOtherBasesPath = auPublicPath.getChildFile("OtherBases");
-			const RelativePath auPublicUtilityPath = auPublicPath.getChildFile("Utility");
+            fixMissingAUValues (exporter);
+
+			if (exporter.isXcode())
+			{
+				const RelativePath publicUtilityPath = getAUFolderPath(exporter).getChildFile("PublicUtility");
+				const RelativePath auPublicPath = getAUFolderPath(exporter).getChildFile("AudioUnits").getChildFile("AUPublic");
+				const RelativePath auPublicAUBasePath = auPublicPath.getChildFile("AUBase");
+				const RelativePath auPublicAUCarbonViewBasePath = auPublicPath.getChildFile("AUCarbonViewBase");
+				const RelativePath auPublicAUViewBasePath = auPublicPath.getChildFile("AUViewBase");
+				const RelativePath auPublicOtherBasesPath = auPublicPath.getChildFile("OtherBases");
+				const RelativePath auPublicUtilityPath = auPublicPath.getChildFile("Utility");
+				
+				exporter.xcodeFrameworks.addTokens ("AudioUnit CoreAudioKit", false);
+				exporter.xcodeExcludedFiles64Bit = "\"*Carbon*.cpp\"";
+				
+				Project::Item subGroup (projectSaver.getGeneratedCodeGroup().addNewSubGroup ("Juce AU Wrapper", -1));
+				subGroup.setID ("__juceappleaufiles");
+				
+				StringArray appleAUFiles;
+				appleAUFiles.add(publicUtilityPath.getChildFile("CADebugMacros.h").toUnixStyle());
+				appleAUFiles.add(publicUtilityPath.getChildFile("CAAUParameter.cpp").toUnixStyle());
+				appleAUFiles.add(publicUtilityPath.getChildFile("CAAUParameter.h").toUnixStyle());
+				appleAUFiles.add(publicUtilityPath.getChildFile("CAAudioChannelLayout.cpp").toUnixStyle());
+				appleAUFiles.add(publicUtilityPath.getChildFile("CAAudioChannelLayout.h").toUnixStyle());
+				appleAUFiles.add(publicUtilityPath.getChildFile("CAMutex.cpp").toUnixStyle());
+				appleAUFiles.add(publicUtilityPath.getChildFile("CAMutex.h").toUnixStyle());
+				appleAUFiles.add(publicUtilityPath.getChildFile("CAStreamBasicDescription.cpp").toUnixStyle());
+				appleAUFiles.add(publicUtilityPath.getChildFile("CAStreamBasicDescription.h").toUnixStyle());
+				appleAUFiles.add(publicUtilityPath.getChildFile("CAVectorUnitTypes.h").toUnixStyle());
+				appleAUFiles.add(publicUtilityPath.getChildFile("CAVectorUnit.cpp").toUnixStyle());
+				appleAUFiles.add(publicUtilityPath.getChildFile("CAVectorUnit.h").toUnixStyle());
+				appleAUFiles.add(auPublicAUViewBasePath.getChildFile("AUViewLocalizedStringKeys.h").toUnixStyle());
+				appleAUFiles.add(auPublicAUCarbonViewBasePath.getChildFile("AUCarbonViewDispatch.cpp").toUnixStyle());
+				appleAUFiles.add(auPublicAUCarbonViewBasePath.getChildFile("AUCarbonViewControl.cpp").toUnixStyle());
+				appleAUFiles.add(auPublicAUCarbonViewBasePath.getChildFile("AUCarbonViewControl.h").toUnixStyle());
+				appleAUFiles.add(auPublicAUCarbonViewBasePath.getChildFile("CarbonEventHandler.cpp").toUnixStyle());
+				appleAUFiles.add(auPublicAUCarbonViewBasePath.getChildFile("CarbonEventHandler.h").toUnixStyle());
+				appleAUFiles.add(auPublicAUCarbonViewBasePath.getChildFile("AUCarbonViewBase.cpp").toUnixStyle());
+				appleAUFiles.add(auPublicAUCarbonViewBasePath.getChildFile("AUCarbonViewBase.h").toUnixStyle());
+				appleAUFiles.add(auPublicAUBasePath.getChildFile("AUBase.cpp").toUnixStyle());
+				appleAUFiles.add(auPublicAUBasePath.getChildFile("AUBase.h").toUnixStyle());
+				appleAUFiles.add(auPublicAUBasePath.getChildFile("AUDispatch.cpp").toUnixStyle());
+				appleAUFiles.add(auPublicAUBasePath.getChildFile("AUDispatch.h").toUnixStyle());
+				appleAUFiles.add(auPublicAUBasePath.getChildFile("AUInputElement.cpp").toUnixStyle());
+				appleAUFiles.add(auPublicAUBasePath.getChildFile("AUInputElement.h").toUnixStyle());
+				appleAUFiles.add(auPublicAUBasePath.getChildFile("AUOutputElement.cpp").toUnixStyle());
+				appleAUFiles.add(auPublicAUBasePath.getChildFile("AUOutputElement.h").toUnixStyle());
+				appleAUFiles.add(auPublicAUBasePath.getChildFile("AUResources.r").toUnixStyle());
+				appleAUFiles.add(auPublicAUBasePath.getChildFile("AUScopeElement.cpp").toUnixStyle());
+				appleAUFiles.add(auPublicAUBasePath.getChildFile("AUScopeElement.h").toUnixStyle());
+				appleAUFiles.add(auPublicAUBasePath.getChildFile("ComponentBase.cpp").toUnixStyle());
+				appleAUFiles.add(auPublicAUBasePath.getChildFile("ComponentBase.h").toUnixStyle());
+				appleAUFiles.add(auPublicOtherBasesPath.getChildFile("AUMIDIBase.cpp").toUnixStyle());
+				appleAUFiles.add(auPublicOtherBasesPath.getChildFile("AUMIDIBase.h").toUnixStyle());
+				appleAUFiles.add(auPublicOtherBasesPath.getChildFile("AUMIDIEffectBase.cpp").toUnixStyle());
+				appleAUFiles.add(auPublicOtherBasesPath.getChildFile("AUMIDIEffectBase.h").toUnixStyle());
+				appleAUFiles.add(auPublicOtherBasesPath.getChildFile("AUOutputBase.cpp").toUnixStyle());
+				appleAUFiles.add(auPublicOtherBasesPath.getChildFile("AUOutputBase.h").toUnixStyle());
+				appleAUFiles.add(auPublicOtherBasesPath.getChildFile("MusicDeviceBase.cpp").toUnixStyle());
+				appleAUFiles.add(auPublicOtherBasesPath.getChildFile("MusicDeviceBase.h").toUnixStyle());
+				appleAUFiles.add(auPublicOtherBasesPath.getChildFile("AUEffectBase.cpp").toUnixStyle());
+				appleAUFiles.add(auPublicOtherBasesPath.getChildFile("AUEffectBase.h").toUnixStyle());
+				appleAUFiles.add(auPublicUtilityPath.getChildFile("AUBuffer.cpp").toUnixStyle());
+				appleAUFiles.add(auPublicUtilityPath.getChildFile("AUBuffer.h").toUnixStyle());
+				appleAUFiles.add(auPublicUtilityPath.getChildFile("AUInputFormatConverter.h").toUnixStyle());
+				appleAUFiles.add(auPublicUtilityPath.getChildFile("AUSilentTimeout.h").toUnixStyle());
+				appleAUFiles.add(auPublicUtilityPath.getChildFile("AUTimestampGenerator.h").toUnixStyle());
+					
+				for (int i = 0; i < appleAUFiles.size(); ++i)
+				{
+					const RelativePath file (appleAUFiles[i], RelativePath::projectFolder);
+					subGroup.addRelativeFile (file, -1, file.hasFileExtension ("cpp;mm"));
+					subGroup.getChild (subGroup.getNumChildren() - 1).getShouldInhibitWarningsValue() = true;
+				}
+
+				XmlElement plistKey ("key");
+				plistKey.addTextElement ("AudioComponents");
+				
+				XmlElement plistEntry ("array");
+				XmlElement* dict = plistEntry.createNewChildElement ("dict");
+				
+				Project& project = exporter.getProject();
+				
+				addPlistDictionaryKey (dict, "name", getPluginManufacturer (project).toString()
+									   + ": " + getPluginName (project).toString());
+				addPlistDictionaryKey (dict, "description", getPluginDesc (project).toString());
+				addPlistDictionaryKey (dict, "factoryFunction", getPluginAUExportPrefix (project).toString() + "Factory");
+				addPlistDictionaryKey (dict, "manufacturer", getPluginManufacturerCode (project).toString().trim().substring (0, 4));
+				addPlistDictionaryKey (dict, "type", getAUMainTypeCode (project));
+				addPlistDictionaryKey (dict, "subtype", getPluginCode (project).toString().trim().substring (0, 4));
+				addPlistDictionaryKeyInt (dict, "version", project.getVersionAsHexInteger());
+				
+				exporter.xcodeExtraPListEntries.add (plistKey);
+				exporter.xcodeExtraPListEntries.add (plistEntry);
+			}
 			
-			exporter.extraSearchPaths.add (publicUtilityPath.toUnixStyle());
-            exporter.extraSearchPaths.add (auPublicUtilityPath.toUnixStyle());
-            exporter.extraSearchPaths.add (auPublicAUBasePath.toUnixStyle());
-            
-			exporter.xcodeFrameworks.addTokens ("AudioUnit CoreAudioKit", false);
-            exporter.xcodeExcludedFiles64Bit = "\"*Carbon*.cpp\"";
-
-            Project::Item subGroup (projectSaver.getGeneratedCodeGroup().addNewSubGroup ("Juce AU Wrapper", -1));
-            subGroup.setID ("__juceappleaufiles");
-
-            {
-/*
-				#define JUCE_AU_PUBLICUTILITY   "${DEVELOPER_DIR}/Extras/CoreAudio/PublicUtility/"
-                #define JUCE_AU_PUBLIC          "${DEVELOPER_DIR}/Extras/CoreAudio/AudioUnits/AUPublic/"
-*/
-				#define JUCE_AU_PUBLICUTILITY   "${DEVELOPER_DIR}/Extras/CoreAudio/PublicUtility/"
-				#define JUCE_AU_PUBLIC          "${DEVELOPER_DIR}/Extras/CoreAudio/AudioUnits/AUPublic/"
-				
-				printf("publicUtilityPath.getChildFile(\"CADebugMacros.h\").toUnixStyle().toRawUTF8(): %s\n", publicUtilityPath.getChildFile("CADebugMacros.h").toUnixStyle().toRawUTF8());
-				
-                static const char* appleAUFiles[] =
-                {
-                    publicUtilityPath.getChildFile("CADebugMacros.h").toUnixStyle().toRawUTF8(),
-                    publicUtilityPath.getChildFile("CAAUParameter.cpp").toUnixStyle().toRawUTF8(),
-                    publicUtilityPath.getChildFile("CAAUParameter.h").toUnixStyle().toRawUTF8(),
-                    publicUtilityPath.getChildFile("CAAudioChannelLayout.cpp").toUnixStyle().toRawUTF8(),
-                    publicUtilityPath.getChildFile("CAAudioChannelLayout.h").toUnixStyle().toRawUTF8(),
-                    publicUtilityPath.getChildFile("CAMutex.cpp").toUnixStyle().toRawUTF8(),
-                    publicUtilityPath.getChildFile("CAMutex.h").toUnixStyle().toRawUTF8(),
-                    publicUtilityPath.getChildFile("CAStreamBasicDescription.cpp").toUnixStyle().toRawUTF8(),
-                    publicUtilityPath.getChildFile("CAStreamBasicDescription.h").toUnixStyle().toRawUTF8(),
-                    publicUtilityPath.getChildFile("CAVectorUnitTypes.h").toUnixStyle().toRawUTF8(),
-                    publicUtilityPath.getChildFile("CAVectorUnit.cpp").toUnixStyle().toRawUTF8(),
-                    publicUtilityPath.getChildFile("CAVectorUnit.h").toUnixStyle().toRawUTF8(),
-                    auPublicAUViewBasePath.getChildFile("AUViewLocalizedStringKeys.h").toUnixStyle().toRawUTF8(),
-                    auPublicAUCarbonViewBasePath.getChildFile("AUCarbonViewDispatch.cpp").toUnixStyle().toRawUTF8(),
-                    auPublicAUCarbonViewBasePath.getChildFile("AUCarbonViewControl.cpp").toUnixStyle().toRawUTF8(),
-                    auPublicAUCarbonViewBasePath.getChildFile("AUCarbonViewControl.h").toUnixStyle().toRawUTF8(),
-                    auPublicAUCarbonViewBasePath.getChildFile("CarbonEventHandler.cpp").toUnixStyle().toRawUTF8(),
-                    auPublicAUCarbonViewBasePath.getChildFile("CarbonEventHandler.h").toUnixStyle().toRawUTF8(),
-                    auPublicAUCarbonViewBasePath.getChildFile("AUCarbonViewBase.cpp").toUnixStyle().toRawUTF8(),
-                    auPublicAUCarbonViewBasePath.getChildFile("AUCarbonViewBase.h").toUnixStyle().toRawUTF8(),
-                    auPublicAUBasePath.getChildFile("AUBase.cpp").toUnixStyle().toRawUTF8(),
-                    auPublicAUBasePath.getChildFile("AUBase.h").toUnixStyle().toRawUTF8(),
-                    auPublicAUBasePath.getChildFile("AUDispatch.cpp").toUnixStyle().toRawUTF8(),
-                    auPublicAUBasePath.getChildFile("AUDispatch.h").toUnixStyle().toRawUTF8(),
-                    auPublicAUBasePath.getChildFile("AUInputElement.cpp").toUnixStyle().toRawUTF8(),
-                    auPublicAUBasePath.getChildFile("AUInputElement.h").toUnixStyle().toRawUTF8(),
-                    auPublicAUBasePath.getChildFile("AUOutputElement.cpp").toUnixStyle().toRawUTF8(),
-                    auPublicAUBasePath.getChildFile("AUOutputElement.h").toUnixStyle().toRawUTF8(),
-                    auPublicAUBasePath.getChildFile("AUResources.r").toUnixStyle().toRawUTF8(),
-                    auPublicAUBasePath.getChildFile("AUScopeElement.cpp").toUnixStyle().toRawUTF8(),
-                    auPublicAUBasePath.getChildFile("AUScopeElement.h").toUnixStyle().toRawUTF8(),
-                    auPublicAUBasePath.getChildFile("ComponentBase.cpp").toUnixStyle().toRawUTF8(),
-                    auPublicAUBasePath.getChildFile("ComponentBase.h").toUnixStyle().toRawUTF8(),
-                    auPublicOtherBasesPath.getChildFile("AUMIDIBase.cpp").toUnixStyle().toRawUTF8(),
-                    auPublicOtherBasesPath.getChildFile("AUMIDIBase.h").toUnixStyle().toRawUTF8(),
-                    auPublicOtherBasesPath.getChildFile("AUMIDIEffectBase.cpp").toUnixStyle().toRawUTF8(),
-                    auPublicOtherBasesPath.getChildFile("AUMIDIEffectBase.h").toUnixStyle().toRawUTF8(),
-                    auPublicOtherBasesPath.getChildFile("AUOutputBase.cpp").toUnixStyle().toRawUTF8(),
-                    auPublicOtherBasesPath.getChildFile("AUOutputBase.h").toUnixStyle().toRawUTF8(),
-                    auPublicOtherBasesPath.getChildFile("MusicDeviceBase.cpp").toUnixStyle().toRawUTF8(),
-                    auPublicOtherBasesPath.getChildFile("MusicDeviceBase.h").toUnixStyle().toRawUTF8(),
-                    auPublicOtherBasesPath.getChildFile("AUEffectBase.cpp").toUnixStyle().toRawUTF8(),
-                    auPublicOtherBasesPath.getChildFile("AUEffectBase.h").toUnixStyle().toRawUTF8(),
-                    auPublicUtilityPath.getChildFile("AUBuffer.cpp").toUnixStyle().toRawUTF8(),
-                    auPublicUtilityPath.getChildFile("AUBuffer.h").toUnixStyle().toRawUTF8(),
-                    auPublicUtilityPath.getChildFile("AUInputFormatConverter.h").toUnixStyle().toRawUTF8(),
-                    auPublicUtilityPath.getChildFile("AUSilentTimeout.h").toUnixStyle().toRawUTF8(),
-                    auPublicUtilityPath.getChildFile("AUTimestampGenerator.h").toUnixStyle().toRawUTF8(),
-                    nullptr
-                };
-				
-				const RelativePath file (publicUtilityPath.getChildFile("CADebugMacros.h").toUnixStyle(), RelativePath::projectFolder);
-				subGroup.addRelativeFile (file, -1, file.hasFileExtension ("cpp;mm"));
-				subGroup.getChild (subGroup.getNumChildren() - 1).getShouldInhibitWarningsValue() = true;
-				
-				const RelativePath file2 (publicUtilityPath.getChildFile("CAAUParameter.cpp").toUnixStyle(), RelativePath::projectFolder);
-				subGroup.addRelativeFile (file2, -1, file.hasFileExtension ("cpp;mm"));
-				subGroup.getChild (subGroup.getNumChildren() - 1).getShouldInhibitWarningsValue() = true;
-
-/*
-                for (const char** f = appleAUFiles; *f != nullptr; ++f)
-                {
-                    const RelativePath file (*f, RelativePath::projectFolder);
-                    subGroup.addRelativeFile (file, -1, file.hasFileExtension ("cpp;mm"));
-                    subGroup.getChild (subGroup.getNumChildren() - 1).getShouldInhibitWarningsValue() = true;
-                }
-*/
-            }
-
-            if (exporter.isXcode())
-            {
-                XmlElement plistKey ("key");
-                plistKey.addTextElement ("AudioComponents");
-
-                XmlElement plistEntry ("array");
-                XmlElement* dict = plistEntry.createNewChildElement ("dict");
-
-                Project& project = exporter.getProject();
-
-                addPlistDictionaryKey (dict, "name", getPluginManufacturer (project).toString()
-                                                       + ": " + getPluginName (project).toString());
-                addPlistDictionaryKey (dict, "description", getPluginDesc (project).toString());
-                addPlistDictionaryKey (dict, "factoryFunction", getPluginAUExportPrefix (project).toString() + "Factory");
-                addPlistDictionaryKey (dict, "manufacturer", getPluginManufacturerCode (project).toString().trim().substring (0, 4));
-                addPlistDictionaryKey (dict, "type", getAUMainTypeCode (project));
-                addPlistDictionaryKey (dict, "subtype", getPluginCode (project).toString().trim().substring (0, 4));
-                addPlistDictionaryKeyInt (dict, "version", project.getVersionAsHexInteger());
-
-                exporter.xcodeExtraPListEntries.add (plistKey);
-                exporter.xcodeExtraPListEntries.add (plistEntry);
-            }
+            writePluginCharacteristicsFile (projectSaver);
+			
+            addExtraSearchPaths (exporter);
         }
     }
 	
@@ -632,6 +625,8 @@ namespace AUHelpers
     {
         if (isExporterSupported (exporter))
         {
+			fixMissingAUValues (exporter);
+			
             props.add (new TextPropertyComponent (getAUFolder (exporter), "AU Folder", 1024, false),
                        "If you're building an AU, this must be the folder containing the CoreAudio/AU SDK. This should be an absolute path.");
         }
