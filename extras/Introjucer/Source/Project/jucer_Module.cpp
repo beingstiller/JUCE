@@ -403,6 +403,7 @@ void LibraryModule::createPropertyEditors (ProjectExporter& exporter, PropertyLi
         if (shouldBuildVST3 (exporter.getProject()).getValue())  VSTHelpers::createPropertyEditors (exporter, props, true);
         if (shouldBuildRTAS (exporter.getProject()).getValue())  RTASHelpers::createPropertyEditors (exporter, props);
         if (shouldBuildAAX  (exporter.getProject()).getValue())  AAXHelpers::createPropertyEditors (exporter, props);
+        if (shouldBuildAAX  (exporter.getProject()).getValue())  AUHelpers::createPropertyEditors (exporter, props);
     }
 }
 
