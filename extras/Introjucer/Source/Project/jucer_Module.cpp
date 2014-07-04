@@ -403,7 +403,7 @@ void LibraryModule::createPropertyEditors (ProjectExporter& exporter, PropertyLi
         if (shouldBuildVST3 (exporter.getProject()).getValue())  VSTHelpers::createPropertyEditors (exporter, props, true);
         if (shouldBuildRTAS (exporter.getProject()).getValue())  RTASHelpers::createPropertyEditors (exporter, props);
         if (shouldBuildAAX  (exporter.getProject()).getValue())  AAXHelpers::createPropertyEditors (exporter, props);
-        if (shouldBuildAAX  (exporter.getProject()).getValue())  AUHelpers::createPropertyEditors (exporter, props);
+        if (shouldBuildAU  (exporter.getProject()).getValue())  AUHelpers::createPropertyEditors (exporter, props);
     }
 }
 
@@ -508,6 +508,12 @@ void LibraryModule::findAndAddCompiledCode (ProjectExporter& exporter, ProjectSa
                                             const File& localModuleFolder, Array<File>& result) const
 {
     const var compileArray (moduleInfo.moduleInfo ["compile"]); // careful to keep this alive while the array is in use!
+	
+	bool _shouldBuildAU = shouldBuildAU  (exporter.getProject()).getValue();
+	bool _shouldBuildAAX = shouldBuildAAX (exporter.getProject()).getValue();
+	bool _shouldBuildRTAS = shouldBuildRTAS (exporter.getProject()).getValue();
+	bool _shouldBuildVST = shouldBuildVST (exporter.getProject()).getValue();
+	bool _shouldBuildVST3 = shouldBuildVST3 (exporter.getProject()).getValue();
 
     if (const Array<var>* const files = compileArray.getArray())
     {
@@ -519,6 +525,12 @@ void LibraryModule::findAndAddCompiledCode (ProjectExporter& exporter, ProjectSa
             if (filename.isNotEmpty()
                  && fileTargetMatches (exporter, file ["target"].toString()))
             {
+				if(filename.contains("juce_AU_") && !_shouldBuildAU) continue;
+				else if(filename.contains("juce_AAX_") && !_shouldBuildAAX) continue;
+				else if(filename.contains("juce_RTAS_") && !_shouldBuildRTAS) continue;
+				else if(filename.contains("juce_VST_") && !_shouldBuildVST) continue;
+				else if(filename.contains("juce_VST3_") && !_shouldBuildVST3) continue;
+				
                 const File compiledFile (localModuleFolder.getChildFile (filename));
                 result.add (compiledFile);
 
