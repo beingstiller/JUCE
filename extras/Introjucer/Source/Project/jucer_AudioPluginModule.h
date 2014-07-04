@@ -487,11 +487,20 @@ namespace RTASHelpers
 //==============================================================================
 namespace AUHelpers
 {
-	static Value getAUFolder (ProjectExporter& exporter)             { return exporter.getSetting (Ids::auFolder); }
-    static RelativePath getAUFolderPath (ProjectExporter& exporter)  { return RelativePath (exporter.getSettingString (Ids::auFolder),
-                                                                                              RelativePath::projectFolder); }
+	static Value getAUFolder (ProjectExporter& exporter)
+	{
+		return exporter.getSetting (Ids::auFolder);
+	}
+	
+    static RelativePath getAUFolderPath (ProjectExporter& exporter)
+	{
+		return RelativePath (exporter.getSettingString (Ids::auFolder), RelativePath::projectFolder);
+	}
 
-    static bool isExporterSupported (ProjectExporter& exporter)   { return exporter.isXcode(); }
+    static bool isExporterSupported (ProjectExporter& exporter)
+	{
+		return exporter.isXcode();
+	}
 
 	static void fixMissingAUValues (ProjectExporter& exporter)
     {
