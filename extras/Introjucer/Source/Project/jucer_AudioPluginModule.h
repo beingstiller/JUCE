@@ -519,9 +519,9 @@ namespace AUHelpers
 		const RelativePath auPublicAUBasePath = auPublicPath.getChildFile("AUBase");
 		const RelativePath auPublicUtilityPath = auPublicPath.getChildFile("Utility");
 		
-		exporter.extraSearchPaths.add (publicUtilityPath.toUnixStyle());
-		exporter.extraSearchPaths.add (auPublicUtilityPath.toUnixStyle());
-		exporter.extraSearchPaths.add (auPublicAUBasePath.toUnixStyle());
+		exporter.addToExtraSearchPaths (publicUtilityPath);
+		exporter.addToExtraSearchPaths (auPublicUtilityPath);
+		exporter.addToExtraSearchPaths (auPublicAUBasePath);
     }
 	
     static inline void prepareExporter (ProjectExporter& exporter, ProjectSaver& projectSaver)
