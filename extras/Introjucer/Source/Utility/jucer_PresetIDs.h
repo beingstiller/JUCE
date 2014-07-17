@@ -158,7 +158,10 @@ namespace Ids
     DECLARE_ID (CONFIGURATION);
     DECLARE_ID (MODULEPATHS);
     DECLARE_ID (MODULEPATH);
-
+    DECLARE_ID (Demo);
+    DECLARE_ID (Shareware);
+    DECLARE_ID (Full);
+	
     const Identifier ID ("id");
     const Identifier class_ ("class");
 

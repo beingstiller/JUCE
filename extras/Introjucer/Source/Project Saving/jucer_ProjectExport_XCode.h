@@ -22,6 +22,8 @@
   ==============================================================================
 */
 
+#include "jucer_AudioPluginModule.h"
+
 namespace
 {
     const char* const osxVersionDefault         = "default";
@@ -273,7 +275,7 @@ protected:
     }
 
 private:
-    mutable OwnedArray<ValueTree> pbxBuildFiles, pbxFileReferences, pbxGroups, misc, projectConfigs, targetConfigs;
+    mutable OwnedArray<ValueTree> pbxBuildFiles, pbxFileReferences, pbxGroups, misc, projectConfigs, targetConfigs, targetConfigsDemo, targetConfigsShareware, targetConfigsFull;
     mutable StringArray buildPhaseIDs, resourceIDs, sourceIDs, frameworkIDs;
     mutable StringArray frameworkFileIDs, rezFileIDs, resourceFileRefs;
     mutable File infoPlistFile, menuNibFile, iconFile;
@@ -355,17 +357,65 @@ private:
 
             addGroup (createID ("__mainsourcegroup"), "Source", topLevelGroupIDs);
         }
+		
+		bool buildDemo = shouldBuildDemo(project).getValue();
+		bool buildShareware = shouldBuildShareware(project).getValue();
+		bool buildFull = shouldBuildFull(project).getValue();
 
         for (ConstConfigIterator config (*this); config.next();)
         {
             const XcodeBuildConfiguration& xcodeConfig = dynamic_cast <const XcodeBuildConfiguration&> (*config);
             addProjectConfig (config->getName(), getProjectSettings (xcodeConfig));
-            addTargetConfig  (config->getName(), getTargetSettings (xcodeConfig));
+			
+			if(buildDemo)
+			{
+				StringPairArray additionalPreprocessorDefs;
+				additionalPreprocessorDefs.set("CG_IS_DEMO", "1");
+				addTargetConfig(targetConfigsDemo, config->getName(), getTargetSettings (xcodeConfig, additionalPreprocessorDefs), Ids::Demo.toString());
+			}
+			
+			if(buildShareware)
+			{
+				StringPairArray additionalPreprocessorDefs;
+				additionalPreprocessorDefs.set("CG_IS_SHAREWARE", "1");
+				addTargetConfig(targetConfigsShareware, config->getName(), getTargetSettings (xcodeConfig, additionalPreprocessorDefs), Ids::Shareware.toString());
+			}
+			
+			if(buildFull)
+			{
+				StringPairArray additionalPreprocessorDefs;
+				additionalPreprocessorDefs.set("CG_IS_FULL", "1");
+				addTargetConfig(targetConfigsFull, config->getName(), getTargetSettings (xcodeConfig, additionalPreprocessorDefs), Ids::Full.toString());
+			}
+			
+			if(!buildDemo && !buildShareware && !buildFull)
+			{
+				addTargetConfig(config->getName(), getTargetSettings (xcodeConfig));
+			}
         }
 
         addConfigList (projectConfigs, createID ("__projList"));
-        addConfigList (targetConfigs, createID ("__configList"));
+		
+		if(buildDemo)
+		{
+			addConfigList (targetConfigsDemo, createID ("__configList" + String("_") + Ids::Demo.toString()));
+		}
 
+		if(buildShareware)
+		{
+			addConfigList (targetConfigsShareware, createID ("__configList" + String("_") + Ids::Shareware.toString()));
+		}
+
+		if(buildFull)
+		{
+			addConfigList (targetConfigsFull, createID ("__configList" + String("_") + Ids::Full.toString()));
+		}
+
+		if(!buildDemo && !buildShareware && !buildFull)
+		{
+			addConfigList (targetConfigs, createID ("__configList"));
+		}
+		
         addShellScriptBuildPhase ("Pre-build script", getPreBuildScript());
 
         if (! projectType.isStaticLibrary())
@@ -382,6 +432,27 @@ private:
         addShellScriptBuildPhase ("Post-build script", getPostBuildScript());
 
         addTargetObject();
+		
+		if(buildDemo)
+		{
+			addTargetObject(Ids::Demo.toString());
+		}
+		
+		if(buildShareware)
+		{
+			addTargetObject(Ids::Shareware.toString());
+		}
+		
+		if(buildFull)
+		{
+			addTargetObject(Ids::Full.toString());
+		}
+		
+		if(!buildDemo && !buildShareware && !buildFull)
+		{
+			addTargetObject();
+		}
+		
         addProjectObject();
     }
 
@@ -706,6 +777,11 @@ private:
 
     StringArray getTargetSettings (const XcodeBuildConfiguration& config) const
     {
+		return getTargetSettings(config, StringPairArray());
+	}
+	
+    StringArray getTargetSettings (const XcodeBuildConfiguration& config, const StringPairArray& additionalPreprocessorDefs) const
+    {
         StringArray s;
 
         const String arch (config.getMacArchitecture());
@@ -830,6 +906,7 @@ private:
 
         {
             defines = mergePreprocessorDefs (defines, getAllPreprocessorDefs (config));
+            defines = mergePreprocessorDefs (defines, additionalPreprocessorDefs);
 
             StringArray defsList;
 
@@ -887,7 +964,10 @@ private:
         objects.addArray (pbxFileReferences);
         objects.addArray (pbxGroups);
         objects.addArray (targetConfigs);
-        objects.addArray (projectConfigs);
+        objects.addArray (targetConfigsDemo);
+		objects.addArray (targetConfigsShareware);
+		objects.addArray (targetConfigsFull);
+		objects.addArray (projectConfigs);
         objects.addArray (misc);
 
         for (int i = 0; i < objects.size(); ++i)
@@ -1129,12 +1209,17 @@ private:
 
     void addTargetConfig (const String& configName, const StringArray& buildSettings) const
     {
-        ValueTree* v = new ValueTree (createID ("targetconfigid_" + configName));
-        v->setProperty ("isa", "XCBuildConfiguration", nullptr);
-        v->setProperty ("buildSettings", indentBracedList (buildSettings), nullptr);
-        v->setProperty (Ids::name, configName, nullptr);
-        targetConfigs.add (v);
+		addTargetConfig(targetConfigs, configName, buildSettings, "");
     }
+	
+	void addTargetConfig (OwnedArray<ValueTree>& targetConfigs, const String& configName, const StringArray& buildSettings, const String& configSuffix) const
+    {
+		ValueTree* v = new ValueTree (createID ("targetconfigid_" + configName + "_" + configSuffix));
+		v->setProperty ("isa", "XCBuildConfiguration", nullptr);
+		v->setProperty ("buildSettings", indentBracedList (buildSettings), nullptr);
+		v->setProperty (Ids::name, configName, nullptr);
+		targetConfigs.add (v);
+	}
 
     void addProjectConfig (const String& configName, const StringArray& buildSettings) const
     {
@@ -1182,15 +1267,15 @@ private:
         return *v;
     }
 
-    void addTargetObject() const
+    void addTargetObject(const String& targetSuffix = "") const
     {
-        ValueTree* const v = new ValueTree (createID ("__target"));
+        ValueTree* const v = new ValueTree (createID ("__target" + (targetSuffix.isEmpty() ? String("") : String("_") + targetSuffix)));
         v->setProperty ("isa", "PBXNativeTarget", nullptr);
-        v->setProperty ("buildConfigurationList", createID ("__configList"), nullptr);
+        v->setProperty ("buildConfigurationList", createID ("__configList" + (targetSuffix.isEmpty() ? String("") : String("_") + targetSuffix)), nullptr);
         v->setProperty ("buildPhases", indentParenthesisedList (buildPhaseIDs), nullptr);
         v->setProperty ("buildRules", "( )", nullptr);
         v->setProperty ("dependencies", "( )", nullptr);
-        v->setProperty (Ids::name, projectName, nullptr);
+        v->setProperty (Ids::name, projectName + (targetSuffix.isEmpty() ? "" : " (" + targetSuffix + ")"), nullptr); // target name
         v->setProperty ("productName", projectName, nullptr);
         v->setProperty ("productReference", createID ("__productFileID"), nullptr);
 
@@ -1214,7 +1299,35 @@ private:
         v->setProperty ("mainGroup", createID ("__mainsourcegroup"), nullptr);
         v->setProperty ("projectDirPath", "\"\"", nullptr);
         v->setProperty ("projectRoot", "\"\"", nullptr);
-        v->setProperty ("targets", "( " + createID ("__target") + " )", nullptr);
+
+		bool buildDemo = shouldBuildDemo(project).getValue();
+		bool buildShareware = shouldBuildShareware(project).getValue();
+		bool buildFull = shouldBuildFull(project).getValue();
+
+		StringArray targets;
+
+		if(buildDemo)
+		{
+			targets.add(createID ("__target" + String("_") + Ids::Demo.toString()));
+		}
+
+		if(buildShareware)
+		{
+			targets.add(createID ("__target" + String("_") + Ids::Shareware.toString()));
+		}
+
+		if(buildFull)
+		{
+			targets.add(createID ("__target" + String("_") + Ids::Full.toString()));
+		}
+		
+		if(!buildDemo && !buildShareware && !buildFull)
+		{
+			targets.add(createID ("__target"));
+		}
+		
+        v->setProperty ("targets", "( " + targets.joinIntoString(",") + " )", nullptr);
+		
         misc.add (v);
     }
 

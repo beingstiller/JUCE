@@ -29,7 +29,11 @@
 //==============================================================================
 namespace
 {
-    Value shouldBuildVST (Project& project)                       { return project.getProjectValue ("buildVST"); }
+    Value shouldBuildDemo (Project& project)                      { return project.getProjectValue ("buildDemo"); }
+    Value shouldBuildShareware (Project& project)                 { return project.getProjectValue ("buildShareware"); }
+    Value shouldBuildFull (Project& project)                      { return project.getProjectValue ("buildFull"); }
+    
+	Value shouldBuildVST (Project& project)                       { return project.getProjectValue ("buildVST"); }
     Value shouldBuildVST3 (Project& project)                      { return project.getProjectValue ("buildVST3"); }
     Value shouldBuildAU (Project& project)                        { return project.getProjectValue ("buildAU"); }
     Value shouldBuildRTAS (Project& project)                      { return project.getProjectValue ("buildRTAS"); }

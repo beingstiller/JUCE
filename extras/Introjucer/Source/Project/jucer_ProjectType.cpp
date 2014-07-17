@@ -193,6 +193,10 @@ public:
     {
         const String sanitisedProjectName (CodeHelpers::makeValidIdentifier (project.getTitle(), false, true, false));
 
+		setValueIfVoid (shouldBuildDemo(project), true);
+		setValueIfVoid (shouldBuildShareware(project), false);
+		setValueIfVoid (shouldBuildFull(project), true);
+		
         setValueIfVoid (shouldBuildVST (project), true);
         setValueIfVoid (shouldBuildVST3 (project), false);
         setValueIfVoid (shouldBuildAU (project),  true);
@@ -219,7 +223,14 @@ public:
 
     void createPropertyEditors (Project& project, PropertyListBuilder& props) const
     {
-        props.add (new BooleanPropertyComponent (shouldBuildVST (project), "Build VST", "Enabled"),
+        props.add (new BooleanPropertyComponent (shouldBuildDemo (project), "Build Demo", "Enabled"),
+                   "Whether the project should produce a Demo plugin.");
+		props.add (new BooleanPropertyComponent (shouldBuildShareware (project), "Build Shareware", "Enabled"),
+                   "Whether the project should produce a Shareware plugin.");
+		props.add (new BooleanPropertyComponent (shouldBuildFull (project), "Build Full", "Enabled"),
+                   "Whether the project should produce a Full plugin.");
+		
+		props.add (new BooleanPropertyComponent (shouldBuildVST (project), "Build VST", "Enabled"),
                    "Whether the project should produce a VST plugin.");
         props.add (new BooleanPropertyComponent (shouldBuildVST3 (project), "Build VST3", "Enabled"),
                    "Whether the project should produce a VST3 plugin.");
