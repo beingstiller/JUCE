@@ -75,6 +75,9 @@ public:
     Value  getPostBuildScriptValue()        { return getSetting (Ids::postbuildCommand); }
     String getPostBuildScript() const       { return settings   [Ids::postbuildCommand]; }
 
+	Value  getPostBuildInstallScriptValue() { return getSetting (Ids::postbuildInstallCommand); }
+    String getPostBuildInstallScript() const{ return settings   [Ids::postbuildInstallCommand]; }
+	
     Value  getPreBuildScriptValue()         { return getSetting (Ids::prebuildCommand); }
     String getPreBuildScript() const        { return settings   [Ids::prebuildCommand]; }
 
@@ -114,7 +117,10 @@ public:
 
         props.add (new TextPropertyComponent (getPostBuildScriptValue(), "Post-build shell script", 32768, true),
                    "Some shell-script that will be run after a build completes.");
-    }
+
+		props.add (new TextPropertyComponent (getPostBuildInstallScriptValue(), "Post-build install shell script", 32768, true),
+                   "Some install shell-script that will be run after a archive build completes.");
+	}
 
     bool launchProject() override
     {
@@ -431,6 +437,8 @@ private:
 
         addShellScriptBuildPhase ("Post-build script", getPostBuildScript());
 
+		addShellScriptBuildPhase ("Post-build install script", getPostBuildInstallScript(), true);
+		
         addTargetObject();
 		
 		if(buildDemo)
@@ -1333,12 +1341,13 @@ private:
         misc.add (v);
     }
 
-    void addShellScriptBuildPhase (const String& phaseName, const String& script) const
+    void addShellScriptBuildPhase (const String& phaseName, const String& script, const bool runScriptOnlyWhenInstalling=false) const
     {
         if (script.trim().isNotEmpty())
         {
             ValueTree& v = addBuildPhase ("PBXShellScriptBuildPhase", StringArray());
             v.setProperty (Ids::name, phaseName, nullptr);
+            v.setProperty ("runOnlyForDeploymentPostprocessing", (runScriptOnlyWhenInstalling ? "1" : "0"), nullptr);
             v.setProperty ("shellPath", "/bin/sh", nullptr);
             v.setProperty ("shellScript", script.replace ("\\", "\\\\")
                                                 .replace ("\"", "\\\"")
