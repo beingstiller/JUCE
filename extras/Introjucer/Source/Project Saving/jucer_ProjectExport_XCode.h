@@ -893,12 +893,14 @@ private:
             defines.set ("_DEBUG", "1");
             defines.set ("DEBUG", "1");
             s.add ("COPY_PHASE_STRIP = NO");
+            s.add ("STRIP_INSTALLED_PRODUCT = NO");
             s.add ("GCC_DYNAMIC_NO_PIC = NO");
         }
         else
         {
             defines.set ("_NDEBUG", "1");
             defines.set ("NDEBUG", "1");
+            s.add ("STRIP_INSTALLED_PRODUCT = NO");
             s.add ("GCC_GENERATE_DEBUGGING_SYMBOLS = NO");
             s.add ("GCC_SYMBOLS_PRIVATE_EXTERN = YES");
             s.add ("DEAD_CODE_STRIPPING = YES");
