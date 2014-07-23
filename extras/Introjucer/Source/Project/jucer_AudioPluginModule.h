@@ -383,6 +383,16 @@ namespace RTASHelpers
         }
         else if (exporter.isXcode())
         {
+			if(exporter.xcodeExcludedFiles64Bit.isEmpty())
+			{
+				exporter.xcodeExcludedFiles64Bit = "\"*RTAS*.cpp *RTAS*.mm\"";
+			}
+			else
+			{
+				String previousExcludes = exporter.xcodeExcludedFiles64Bit.substring(1, exporter.xcodeExcludedFiles64Bit.length()-1);
+				exporter.xcodeExcludedFiles64Bit = "\"" + previousExcludes + " *RTAS*.cpp *RTAS*.mm\"";
+			}
+			
             exporter.extraSearchPaths.add ("$(DEVELOPER_DIR)/Headers/FlatCarbon");
             exporter.extraSearchPaths.add ("$(SDKROOT)/Developer/Headers/FlatCarbon");
 
