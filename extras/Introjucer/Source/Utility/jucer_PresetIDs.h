@@ -95,6 +95,7 @@ namespace Ids
     DECLARE_ID (jucerVersion);
     DECLARE_ID (prebuildCommand);
     DECLARE_ID (postbuildCommand);
+    DECLARE_ID (postbuildInstallCommand);
     DECLARE_ID (generateManifest);
     DECLARE_ID (useRuntimeLibDLL);
     DECLARE_ID (wholeProgramOptimisation);
