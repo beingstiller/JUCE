@@ -22,6 +22,8 @@
   ==============================================================================
 */
 
+#include "jucer_AudioPluginModule.h"
+
 class MSVCProjectExporterBase   : public ProjectExporter
 {
 public:
@@ -232,7 +234,12 @@ protected:
                                         .toWindowsStyle());
     }
 
-    String getPreprocessorDefs (const BuildConfiguration& config, const String& joinString) const
+	String getPreprocessorDefs(const BuildConfiguration& config, const String& joinString) const
+	{
+		return getPreprocessorDefs(config, joinString, StringPairArray());
+	}
+
+	String getPreprocessorDefs(const BuildConfiguration& config, const String& joinString, const StringPairArray& additionalPreprocessorDefs) const
     {
         StringPairArray defines (msvcExtraPreprocessorDefs);
         defines.set ("WIN32", "");
@@ -249,6 +256,7 @@ protected:
         }
 
         defines = mergePreprocessorDefs (defines, getAllPreprocessorDefs (config));
+		defines = mergePreprocessorDefs (defines, additionalPreprocessorDefs);
 
         StringArray result;
 
@@ -703,8 +711,15 @@ protected:
         return e;
     }
 
-    void createConfig (XmlElement& xml, const MSVCBuildConfiguration& config) const
+	void createConfig(XmlElement& xml, const MSVCBuildConfiguration& config) const
+	{
+		createConfig(xml, config, StringPairArray());
+	}
+
+	void createConfig(XmlElement& xml, const MSVCBuildConfiguration& config, const StringPairArray& additionalPreprocessorDefs) const
     {
+		Logger::writeToLog(">>> Hallo: ");
+
         const bool isDebug = config.isDebug();
 
         xml.setAttribute ("Name", createConfigName (config));
@@ -879,9 +894,49 @@ protected:
 
     void createConfigs (XmlElement& xml) const
     {
-        for (ConstConfigIterator config (*this); config.next();)
-            createConfig (*xml.createNewChildElement ("Configuration"),
-                          dynamic_cast <const MSVCBuildConfiguration&> (*config));
+		bool buildDemo = shouldBuildDemo(project).getValue();
+		bool buildShareware = shouldBuildShareware(project).getValue();
+		bool buildFull = shouldBuildFull(project).getValue();
+
+		for (ConstConfigIterator config(*this); config.next();)
+		{
+			MSVCBuildConfiguration& targetConfig = const_cast<MSVCBuildConfiguration&>(dynamic_cast <const MSVCBuildConfiguration&> (*config));
+			String configName = targetConfig.getName();
+
+			if (buildDemo)
+			{
+				StringPairArray additionalPreprocessorDefs;
+				additionalPreprocessorDefs.set("CG_IS_DEMO", "1");
+				targetConfig.setName(configName + " (Demo)");
+				createConfig(*xml.createNewChildElement("Configuration"), targetConfig, additionalPreprocessorDefs);
+			}
+
+			if (buildShareware)
+			{
+				StringPairArray additionalPreprocessorDefs;
+				additionalPreprocessorDefs.set("CG_IS_SHAREWARE", "1");
+				targetConfig.setName(configName + " (Shareware)");
+				createConfig(*xml.createNewChildElement("Configuration"), targetConfig, additionalPreprocessorDefs);
+			}
+
+			if (buildFull)
+			{
+				StringPairArray additionalPreprocessorDefs;
+				additionalPreprocessorDefs.set("CG_IS_FULL", "1");
+				targetConfig.setName(configName + " (Full)");
+				createConfig(*xml.createNewChildElement("Configuration"), targetConfig, additionalPreprocessorDefs);
+			}
+
+			if (!buildDemo && !buildShareware && !buildFull)
+			{
+				createConfig(*xml.createNewChildElement("Configuration"),
+					dynamic_cast <const MSVCBuildConfiguration&> (*config));
+			}
+			else
+			{
+				targetConfig.setName(configName);
+			}
+		}
     }
 
     static const char* getOptimisationLevelString (int level)
@@ -1067,6 +1122,10 @@ protected:
     //==============================================================================
     void fillInProjectXml (XmlElement& projectXml) const
     {
+		bool buildDemo = shouldBuildDemo(project).getValue();
+		bool buildShareware = shouldBuildShareware(project).getValue();
+		bool buildFull = shouldBuildFull(project).getValue();
+
         projectXml.setAttribute ("DefaultTargets", "Build");
         projectXml.setAttribute ("ToolsVersion", getToolsVersion());
         projectXml.setAttribute ("xmlns", "http://schemas.microsoft.com/developer/msbuild/2003");
@@ -1077,10 +1136,40 @@ protected:
 
             for (ConstConfigIterator config (*this); config.next();)
             {
-                XmlElement* e = configsGroup->createNewChildElement ("ProjectConfiguration");
-                e->setAttribute ("Include", createConfigName (*config));
-                e->createNewChildElement ("Configuration")->addTextElement (config->getName());
-                e->createNewChildElement ("Platform")->addTextElement (is64Bit (*config) ? "x64" : "Win32");
+				BuildConfiguration& buildConfig = const_cast<BuildConfiguration&>(*config);
+				String originalConfigName = buildConfig.getName();
+
+				if (buildDemo) {
+
+					buildConfig.setName("Demo - " + originalConfigName);
+
+					XmlElement* e = configsGroup->createNewChildElement("ProjectConfiguration");
+					e->setAttribute("Include", createConfigName(*config));
+					e->createNewChildElement("Configuration")->addTextElement(config->getName());
+					e->createNewChildElement("Platform")->addTextElement(is64Bit(*config) ? "x64" : "Win32");
+				}
+
+				if (buildShareware) {
+
+					buildConfig.setName("Shareware - " + originalConfigName);
+
+					XmlElement* e = configsGroup->createNewChildElement("ProjectConfiguration");
+					e->setAttribute("Include", createConfigName(*config));
+					e->createNewChildElement("Configuration")->addTextElement(config->getName());
+					e->createNewChildElement("Platform")->addTextElement(is64Bit(*config) ? "x64" : "Win32");
+				}
+
+				if (buildFull) {
+
+					buildConfig.setName("Full - " + originalConfigName);
+
+					XmlElement* e = configsGroup->createNewChildElement("ProjectConfiguration");
+					e->setAttribute("Include", createConfigName(*config));
+					e->createNewChildElement("Configuration")->addTextElement(config->getName());
+					e->createNewChildElement("Platform")->addTextElement(is64Bit(*config) ? "x64" : "Win32");
+				}
+
+				buildConfig.setName(originalConfigName);
             }
         }
 
@@ -1099,22 +1188,76 @@ protected:
         {
             const VC2010BuildConfiguration& config = dynamic_cast<const VC2010BuildConfiguration&> (*i);
 
-            XmlElement* e = projectXml.createNewChildElement ("PropertyGroup");
-            setConditionAttribute (*e, config);
-            e->setAttribute ("Label", "Configuration");
-            e->createNewChildElement ("ConfigurationType")->addTextElement (getProjectType());
-            e->createNewChildElement ("UseOfMfc")->addTextElement ("false");
+			BuildConfiguration& buildConfig = const_cast<BuildConfiguration&> (*i);
+			String originalConfigName = buildConfig.getName();
 
-            const String charSet (config.getCharacterSet());
+			if (buildDemo) {
 
-            if (charSet.isNotEmpty())
-                e->createNewChildElement ("CharacterSet")->addTextElement (charSet);
+				buildConfig.setName("Demo - " + originalConfigName);
 
-            if (! (config.isDebug() || config.shouldDisableWholeProgramOpt()))
-                e->createNewChildElement ("WholeProgramOptimization")->addTextElement ("true");
+				XmlElement* e = projectXml.createNewChildElement("PropertyGroup");
+				setConditionAttribute(*e, config);
+				e->setAttribute("Label", "Configuration");
+				e->createNewChildElement("ConfigurationType")->addTextElement(getProjectType());
+				e->createNewChildElement("UseOfMfc")->addTextElement("false");
 
-            if (config.is64Bit())
-                e->createNewChildElement ("PlatformToolset")->addTextElement (getPlatformToolset());
+				const String charSet(config.getCharacterSet());
+
+				if (charSet.isNotEmpty())
+					e->createNewChildElement("CharacterSet")->addTextElement(charSet);
+
+				if (!(config.isDebug() || config.shouldDisableWholeProgramOpt()))
+					e->createNewChildElement("WholeProgramOptimization")->addTextElement("true");
+
+				if (config.is64Bit())
+					e->createNewChildElement("PlatformToolset")->addTextElement(getPlatformToolset());
+			}
+
+			if (buildShareware) {
+
+				buildConfig.setName("Shareware - " + originalConfigName);
+
+				XmlElement* e = projectXml.createNewChildElement("PropertyGroup");
+				setConditionAttribute(*e, config);
+				e->setAttribute("Label", "Configuration");
+				e->createNewChildElement("ConfigurationType")->addTextElement(getProjectType());
+				e->createNewChildElement("UseOfMfc")->addTextElement("false");
+
+				const String charSet(config.getCharacterSet());
+
+				if (charSet.isNotEmpty())
+					e->createNewChildElement("CharacterSet")->addTextElement(charSet);
+
+				if (!(config.isDebug() || config.shouldDisableWholeProgramOpt()))
+					e->createNewChildElement("WholeProgramOptimization")->addTextElement("true");
+
+				if (config.is64Bit())
+					e->createNewChildElement("PlatformToolset")->addTextElement(getPlatformToolset());
+			}
+
+			if (buildFull) {
+
+				buildConfig.setName("Full - " + originalConfigName);
+
+				XmlElement* e = projectXml.createNewChildElement("PropertyGroup");
+				setConditionAttribute(*e, config);
+				e->setAttribute("Label", "Configuration");
+				e->createNewChildElement("ConfigurationType")->addTextElement(getProjectType());
+				e->createNewChildElement("UseOfMfc")->addTextElement("false");
+
+				const String charSet(config.getCharacterSet());
+
+				if (charSet.isNotEmpty())
+					e->createNewChildElement("CharacterSet")->addTextElement(charSet);
+
+				if (!(config.isDebug() || config.shouldDisableWholeProgramOpt()))
+					e->createNewChildElement("WholeProgramOptimization")->addTextElement("true");
+
+				if (config.is64Bit())
+					e->createNewChildElement("PlatformToolset")->addTextElement(getPlatformToolset());
+			}
+
+			buildConfig.setName(originalConfigName);
         }
 
         {
@@ -1149,39 +1292,127 @@ protected:
             {
                 const VC2010BuildConfiguration& config = dynamic_cast<const VC2010BuildConfiguration&> (*i);
 
-                {
-                    XmlElement* outdir = props->createNewChildElement ("OutDir");
-                    setConditionAttribute (*outdir, config);
-                    outdir->addTextElement (FileHelpers::windowsStylePath (getConfigTargetPath (config)) + "\\");
-                }
+				BuildConfiguration& buildConfig = const_cast<BuildConfiguration&> (*i);
+				String originalConfigName = buildConfig.getName();
 
-                if (config.getIntermediatesPath().isNotEmpty())
-                {
-                    XmlElement* intdir = props->createNewChildElement ("IntDir");
-                    setConditionAttribute (*intdir, config);
-                    intdir->addTextElement (FileHelpers::windowsStylePath (config.getIntermediatesPath()) + "\\");
-                }
+				if (buildDemo) {
 
-                {
-                    XmlElement* targetName = props->createNewChildElement ("TargetName");
-                    setConditionAttribute (*targetName, config);
-                    targetName->addTextElement (config.getOutputFilename (String::empty, true));
-                }
+					buildConfig.setName("Demo - " + originalConfigName);
 
-                {
-                    XmlElement* manifest = props->createNewChildElement ("GenerateManifest");
-                    setConditionAttribute (*manifest, config);
-                    manifest->addTextElement (config.shouldGenerateManifest() ? "true" : "false");
-                }
+					{
+						XmlElement* outdir = props->createNewChildElement("OutDir");
+						setConditionAttribute(*outdir, config);
+						outdir->addTextElement(FileHelpers::windowsStylePath(getConfigTargetPath(config)) + "\\");
+					}
 
-                const StringArray librarySearchPaths (config.getLibrarySearchPaths());
+					if (config.getIntermediatesPath().isNotEmpty())
+					{
+						XmlElement* intdir = props->createNewChildElement("IntDir");
+						setConditionAttribute(*intdir, config);
+						intdir->addTextElement(FileHelpers::windowsStylePath(config.getIntermediatesPath()) + "\\");
+					}
 
-                if (librarySearchPaths.size() > 0)
-                {
-                    XmlElement* libPath = props->createNewChildElement ("LibraryPath");
-                    setConditionAttribute (*libPath, config);
-                    libPath->addTextElement ("$(LibraryPath);" + librarySearchPaths.joinIntoString (";"));
-                }
+					{
+						XmlElement* targetName = props->createNewChildElement("TargetName");
+						setConditionAttribute(*targetName, config);
+						targetName->addTextElement(config.getOutputFilename(String::empty, true));
+					}
+
+					{
+						XmlElement* manifest = props->createNewChildElement("GenerateManifest");
+						setConditionAttribute(*manifest, config);
+						manifest->addTextElement(config.shouldGenerateManifest() ? "true" : "false");
+					}
+
+					const StringArray librarySearchPaths(config.getLibrarySearchPaths());
+
+					if (librarySearchPaths.size() > 0)
+					{
+						XmlElement* libPath = props->createNewChildElement("LibraryPath");
+						setConditionAttribute(*libPath, config);
+						libPath->addTextElement("$(LibraryPath);" + librarySearchPaths.joinIntoString(";"));
+					}
+				}
+
+				if (buildShareware) {
+
+					buildConfig.setName("Shareware - " + originalConfigName);
+
+					{
+						XmlElement* outdir = props->createNewChildElement("OutDir");
+						setConditionAttribute(*outdir, config);
+						outdir->addTextElement(FileHelpers::windowsStylePath(getConfigTargetPath(config)) + "\\");
+					}
+
+					if (config.getIntermediatesPath().isNotEmpty())
+					{
+						XmlElement* intdir = props->createNewChildElement("IntDir");
+						setConditionAttribute(*intdir, config);
+						intdir->addTextElement(FileHelpers::windowsStylePath(config.getIntermediatesPath()) + "\\");
+					}
+
+					{
+						XmlElement* targetName = props->createNewChildElement("TargetName");
+						setConditionAttribute(*targetName, config);
+						targetName->addTextElement(config.getOutputFilename(String::empty, true));
+					}
+
+					{
+						XmlElement* manifest = props->createNewChildElement("GenerateManifest");
+						setConditionAttribute(*manifest, config);
+						manifest->addTextElement(config.shouldGenerateManifest() ? "true" : "false");
+					}
+
+					const StringArray librarySearchPaths(config.getLibrarySearchPaths());
+
+					if (librarySearchPaths.size() > 0)
+					{
+						XmlElement* libPath = props->createNewChildElement("LibraryPath");
+						setConditionAttribute(*libPath, config);
+						libPath->addTextElement("$(LibraryPath);" + librarySearchPaths.joinIntoString(";"));
+					}
+				}
+
+				if (buildFull) {
+
+					buildConfig.setName("Full - " + originalConfigName);
+
+					{
+						XmlElement* outdir = props->createNewChildElement("OutDir");
+						setConditionAttribute(*outdir, config);
+						outdir->addTextElement(FileHelpers::windowsStylePath(getConfigTargetPath(config)) + "\\");
+					}
+
+					if (config.getIntermediatesPath().isNotEmpty())
+					{
+						XmlElement* intdir = props->createNewChildElement("IntDir");
+						setConditionAttribute(*intdir, config);
+						intdir->addTextElement(FileHelpers::windowsStylePath(config.getIntermediatesPath()) + "\\");
+					}
+
+					{
+						XmlElement* targetName = props->createNewChildElement("TargetName");
+						setConditionAttribute(*targetName, config);
+						targetName->addTextElement(config.getOutputFilename(String::empty, true));
+					}
+
+					{
+						XmlElement* manifest = props->createNewChildElement("GenerateManifest");
+						setConditionAttribute(*manifest, config);
+						manifest->addTextElement(config.shouldGenerateManifest() ? "true" : "false");
+					}
+
+					const StringArray librarySearchPaths(config.getLibrarySearchPaths());
+
+					if (librarySearchPaths.size() > 0)
+					{
+						XmlElement* libPath = props->createNewChildElement("LibraryPath");
+						setConditionAttribute(*libPath, config);
+						libPath->addTextElement("$(LibraryPath);" + librarySearchPaths.joinIntoString(";"));
+					}
+				}
+
+				buildConfig.setName(originalConfigName);
             }
         }
 
@@ -1189,128 +1420,394 @@ protected:
         {
             const VC2010BuildConfiguration& config = dynamic_cast<const VC2010BuildConfiguration&> (*i);
 
-            const bool isDebug = config.isDebug();
+			BuildConfiguration& buildConfig = const_cast<BuildConfiguration&> (*i);
+			String originalConfigName = buildConfig.getName();
 
-            XmlElement* group = projectXml.createNewChildElement ("ItemDefinitionGroup");
-            setConditionAttribute (*group, config);
+			if (buildDemo) {
 
-            {
-                XmlElement* midl = group->createNewChildElement ("Midl");
-                midl->createNewChildElement ("PreprocessorDefinitions")->addTextElement (isDebug ? "_DEBUG;%(PreprocessorDefinitions)"
-                                                                                                 : "NDEBUG;%(PreprocessorDefinitions)");
-                midl->createNewChildElement ("MkTypLibCompatible")->addTextElement ("true");
-                midl->createNewChildElement ("SuppressStartupBanner")->addTextElement ("true");
-                midl->createNewChildElement ("TargetEnvironment")->addTextElement ("Win32");
-                midl->createNewChildElement ("HeaderFileName");
-            }
+				buildConfig.setName("Demo - " + originalConfigName);
 
-            bool isUsingEditAndContinue = false;
+				const bool isDebug = config.isDebug();
 
-            {
-                XmlElement* cl = group->createNewChildElement ("ClCompile");
+				XmlElement* group = projectXml.createNewChildElement("ItemDefinitionGroup");
+				setConditionAttribute(*group, config);
 
-                cl->createNewChildElement ("Optimization")->addTextElement (getOptimisationLevelString (config.getOptimisationLevelInt()));
+				{
+					XmlElement* midl = group->createNewChildElement("Midl");
+					midl->createNewChildElement("PreprocessorDefinitions")->addTextElement(isDebug ? "_DEBUG;%(PreprocessorDefinitions)"
+						: "NDEBUG;%(PreprocessorDefinitions)");
+					midl->createNewChildElement("MkTypLibCompatible")->addTextElement("true");
+					midl->createNewChildElement("SuppressStartupBanner")->addTextElement("true");
+					midl->createNewChildElement("TargetEnvironment")->addTextElement("Win32");
+					midl->createNewChildElement("HeaderFileName");
+				}
 
-                if (isDebug && config.getOptimisationLevelInt() <= optimisationOff)
-                {
-                    isUsingEditAndContinue = ! config.is64Bit();
+				bool isUsingEditAndContinue = false;
 
-                    cl->createNewChildElement ("DebugInformationFormat")
-                            ->addTextElement (isUsingEditAndContinue ? "EditAndContinue"
-                                                                     : "ProgramDatabase");
-                }
+				{
+					XmlElement* cl = group->createNewChildElement("ClCompile");
 
-                StringArray includePaths (getHeaderSearchPaths (config));
-                includePaths.add ("%(AdditionalIncludeDirectories)");
-                cl->createNewChildElement ("AdditionalIncludeDirectories")->addTextElement (includePaths.joinIntoString (";"));
-                cl->createNewChildElement ("PreprocessorDefinitions")->addTextElement (getPreprocessorDefs (config, ";") + ";%(PreprocessorDefinitions)");
-                cl->createNewChildElement ("RuntimeLibrary")->addTextElement (config.isUsingRuntimeLibDLL() ? (isDebug ? "MultiThreadedDebugDLL" : "MultiThreadedDLL")
-                                                                                                            : (isDebug ? "MultiThreadedDebug"    : "MultiThreaded"));
-                cl->createNewChildElement ("RuntimeTypeInfo")->addTextElement ("true");
-                cl->createNewChildElement ("PrecompiledHeader");
-                cl->createNewChildElement ("AssemblerListingLocation")->addTextElement ("$(IntDir)\\");
-                cl->createNewChildElement ("ObjectFileName")->addTextElement ("$(IntDir)\\");
-                cl->createNewChildElement ("ProgramDataBaseFileName")->addTextElement ("$(IntDir)\\");
-                cl->createNewChildElement ("WarningLevel")->addTextElement ("Level" + String (config.getWarningLevel()));
-                cl->createNewChildElement ("SuppressStartupBanner")->addTextElement ("true");
-                cl->createNewChildElement ("MultiProcessorCompilation")->addTextElement ("true");
+					cl->createNewChildElement("Optimization")->addTextElement(getOptimisationLevelString(config.getOptimisationLevelInt()));
 
-                if (config.isFastMathEnabled())
-                    cl->createNewChildElement ("FloatingPointModel")->addTextElement ("Fast");
+					if (isDebug && config.getOptimisationLevelInt() <= optimisationOff)
+					{
+						isUsingEditAndContinue = !config.is64Bit();
 
-                const String extraFlags (replacePreprocessorTokens (config, getExtraCompilerFlagsString()).trim());
-                if (extraFlags.isNotEmpty())
-                    cl->createNewChildElement ("AdditionalOptions")->addTextElement (extraFlags + " %(AdditionalOptions)");
-            }
+						cl->createNewChildElement("DebugInformationFormat")
+							->addTextElement(isUsingEditAndContinue ? "EditAndContinue"
+							: "ProgramDatabase");
+					}
 
-            {
-                XmlElement* res = group->createNewChildElement ("ResourceCompile");
-                res->createNewChildElement ("PreprocessorDefinitions")->addTextElement (isDebug ? "_DEBUG;%(PreprocessorDefinitions)"
-                                                                                                : "NDEBUG;%(PreprocessorDefinitions)");
-            }
+					StringArray includePaths(getHeaderSearchPaths(config));
+					includePaths.add("%(AdditionalIncludeDirectories)");
+					cl->createNewChildElement("AdditionalIncludeDirectories")->addTextElement(includePaths.joinIntoString(";"));
+					cl->createNewChildElement("PreprocessorDefinitions")->addTextElement(getPreprocessorDefs(config, ";") + ";CG_IS_DEMO=1" + ";%(PreprocessorDefinitions)");
+					cl->createNewChildElement("RuntimeLibrary")->addTextElement(config.isUsingRuntimeLibDLL() ? (isDebug ? "MultiThreadedDebugDLL" : "MultiThreadedDLL")
+						: (isDebug ? "MultiThreadedDebug" : "MultiThreaded"));
+					cl->createNewChildElement("RuntimeTypeInfo")->addTextElement("true");
+					cl->createNewChildElement("PrecompiledHeader");
+					cl->createNewChildElement("AssemblerListingLocation")->addTextElement("$(IntDir)\\");
+					cl->createNewChildElement("ObjectFileName")->addTextElement("$(IntDir)\\");
+					cl->createNewChildElement("ProgramDataBaseFileName")->addTextElement("$(IntDir)\\");
+					cl->createNewChildElement("WarningLevel")->addTextElement("Level" + String(config.getWarningLevel()));
+					cl->createNewChildElement("SuppressStartupBanner")->addTextElement("true");
+					cl->createNewChildElement("MultiProcessorCompilation")->addTextElement("true");
 
-            {
-                XmlElement* link = group->createNewChildElement ("Link");
-                link->createNewChildElement ("OutputFile")->addTextElement (getOutDirFile (config, config.getOutputFilename (msvcTargetSuffix, false)));
-                link->createNewChildElement ("SuppressStartupBanner")->addTextElement ("true");
-                link->createNewChildElement ("IgnoreSpecificDefaultLibraries")->addTextElement (isDebug ? "libcmt.lib; msvcrt.lib;;%(IgnoreSpecificDefaultLibraries)"
-                                                                                                        : "%(IgnoreSpecificDefaultLibraries)");
-                link->createNewChildElement ("GenerateDebugInformation")->addTextElement ((isDebug || config.shouldGenerateDebugSymbols()) ? "true" : "false");
-                link->createNewChildElement ("ProgramDatabaseFile")->addTextElement (getIntDirFile (config, config.getOutputFilename (".pdb", true)));
-                link->createNewChildElement ("SubSystem")->addTextElement (msvcIsWindowsSubsystem ? "Windows" : "Console");
+					if (config.isFastMathEnabled())
+						cl->createNewChildElement("FloatingPointModel")->addTextElement("Fast");
 
-                if (! config.is64Bit())
-                    link->createNewChildElement ("TargetMachine")->addTextElement ("MachineX86");
+					const String extraFlags(replacePreprocessorTokens(config, getExtraCompilerFlagsString()).trim());
+					if (extraFlags.isNotEmpty())
+						cl->createNewChildElement("AdditionalOptions")->addTextElement(extraFlags + " %(AdditionalOptions)");
+				}
 
-                if (isUsingEditAndContinue)
-                    link->createNewChildElement ("ImageHasSafeExceptionHandlers")->addTextElement ("false");
+				{
+					XmlElement* res = group->createNewChildElement("ResourceCompile");
+					res->createNewChildElement("PreprocessorDefinitions")->addTextElement(isDebug ? "_DEBUG;%(PreprocessorDefinitions)"
+						: "NDEBUG;%(PreprocessorDefinitions)");
+				}
 
-                if (! isDebug)
-                {
-                    link->createNewChildElement ("OptimizeReferences")->addTextElement ("true");
-                    link->createNewChildElement ("EnableCOMDATFolding")->addTextElement ("true");
-                }
+				{
+					XmlElement* link = group->createNewChildElement("Link");
+					link->createNewChildElement("OutputFile")->addTextElement(getOutDirFile(config, config.getOutputFilename(msvcTargetSuffix, false)));
+					link->createNewChildElement("SuppressStartupBanner")->addTextElement("true");
+					link->createNewChildElement("IgnoreSpecificDefaultLibraries")->addTextElement(isDebug ? "libcmt.lib; msvcrt.lib;;%(IgnoreSpecificDefaultLibraries)"
+						: "%(IgnoreSpecificDefaultLibraries)");
+					link->createNewChildElement("GenerateDebugInformation")->addTextElement((isDebug || config.shouldGenerateDebugSymbols()) ? "true" : "false");
+					link->createNewChildElement("ProgramDatabaseFile")->addTextElement(getIntDirFile(config, config.getOutputFilename(".pdb", true)));
+					link->createNewChildElement("SubSystem")->addTextElement(msvcIsWindowsSubsystem ? "Windows" : "Console");
 
-                const StringArray librarySearchPaths (config.getLibrarySearchPaths());
-                if (librarySearchPaths.size() > 0)
-                    link->createNewChildElement ("AdditionalLibraryDirectories")->addTextElement (replacePreprocessorTokens (config, librarySearchPaths.joinIntoString (";"))
-                                                                                                    + ";%(AdditionalLibraryDirectories)");
+					if (!config.is64Bit())
+						link->createNewChildElement("TargetMachine")->addTextElement("MachineX86");
 
-                link->createNewChildElement ("LargeAddressAware")->addTextElement ("true");
+					if (isUsingEditAndContinue)
+						link->createNewChildElement("ImageHasSafeExceptionHandlers")->addTextElement("false");
 
-                String externalLibraries (getExternalLibrariesString());
-                if (externalLibraries.isNotEmpty())
-                    link->createNewChildElement ("AdditionalDependencies")->addTextElement (replacePreprocessorTokens (config, externalLibraries).trim()
-                                                                                              + ";%(AdditionalDependencies)");
+					if (!isDebug)
+					{
+						link->createNewChildElement("OptimizeReferences")->addTextElement("true");
+						link->createNewChildElement("EnableCOMDATFolding")->addTextElement("true");
+					}
 
-                String extraLinkerOptions (getExtraLinkerFlagsString());
-                if (extraLinkerOptions.isNotEmpty())
-                    link->createNewChildElement ("AdditionalOptions")->addTextElement (replacePreprocessorTokens (config, extraLinkerOptions).trim()
-                                                                                         + " %(AdditionalOptions)");
+					const StringArray librarySearchPaths(config.getLibrarySearchPaths());
+					if (librarySearchPaths.size() > 0)
+						link->createNewChildElement("AdditionalLibraryDirectories")->addTextElement(replacePreprocessorTokens(config, librarySearchPaths.joinIntoString(";"))
+						+ ";%(AdditionalLibraryDirectories)");
 
-                if (msvcDelayLoadedDLLs.isNotEmpty())
-                    link->createNewChildElement ("DelayLoadDLLs")->addTextElement (msvcDelayLoadedDLLs);
+					link->createNewChildElement("LargeAddressAware")->addTextElement("true");
 
-                if (config.config [Ids::msvcModuleDefinitionFile].toString().isNotEmpty())
-                    link->createNewChildElement ("ModuleDefinitionFile")
-                        ->addTextElement (config.config [Ids::msvcModuleDefinitionFile].toString());
-            }
+					String externalLibraries(getExternalLibrariesString());
+					if (externalLibraries.isNotEmpty())
+						link->createNewChildElement("AdditionalDependencies")->addTextElement(replacePreprocessorTokens(config, externalLibraries).trim()
+						+ ";%(AdditionalDependencies)");
 
-            {
-                XmlElement* bsc = group->createNewChildElement ("Bscmake");
-                bsc->createNewChildElement ("SuppressStartupBanner")->addTextElement ("true");
-                bsc->createNewChildElement ("OutputFile")->addTextElement (getIntDirFile (config, config.getOutputFilename (".bsc", true)));
-            }
+					String extraLinkerOptions(getExtraLinkerFlagsString());
+					if (extraLinkerOptions.isNotEmpty())
+						link->createNewChildElement("AdditionalOptions")->addTextElement(replacePreprocessorTokens(config, extraLinkerOptions).trim()
+						+ " %(AdditionalOptions)");
 
-            if (config.getPrebuildCommandString().isNotEmpty())
-                group->createNewChildElement ("PreBuildEvent")
-                     ->createNewChildElement ("Command")
-                     ->addTextElement (config.getPrebuildCommandString());
+					if (msvcDelayLoadedDLLs.isNotEmpty())
+						link->createNewChildElement("DelayLoadDLLs")->addTextElement(msvcDelayLoadedDLLs);
 
-            if (config.getPostbuildCommandString().isNotEmpty())
-                group->createNewChildElement ("PostBuildEvent")
-                     ->createNewChildElement ("Command")
-                     ->addTextElement (config.getPostbuildCommandString());
+					if (config.config[Ids::msvcModuleDefinitionFile].toString().isNotEmpty())
+						link->createNewChildElement("ModuleDefinitionFile")
+						->addTextElement(config.config[Ids::msvcModuleDefinitionFile].toString());
+				}
+
+				{
+					XmlElement* bsc = group->createNewChildElement("Bscmake");
+					bsc->createNewChildElement("SuppressStartupBanner")->addTextElement("true");
+					bsc->createNewChildElement("OutputFile")->addTextElement(getIntDirFile(config, config.getOutputFilename(".bsc", true)));
+				}
+
+				if (config.getPrebuildCommandString().isNotEmpty())
+					group->createNewChildElement("PreBuildEvent")
+					->createNewChildElement("Command")
+					->addTextElement(config.getPrebuildCommandString());
+
+				if (config.getPostbuildCommandString().isNotEmpty())
+					group->createNewChildElement("PostBuildEvent")
+					->createNewChildElement("Command")
+					->addTextElement(config.getPostbuildCommandString());
+			}
+
+			if (buildShareware) {
+
+				buildConfig.setName("Shareware - " + originalConfigName);
+
+				const bool isDebug = config.isDebug();
+
+				XmlElement* group = projectXml.createNewChildElement("ItemDefinitionGroup");
+				setConditionAttribute(*group, config);
+
+				{
+					XmlElement* midl = group->createNewChildElement("Midl");
+					midl->createNewChildElement("PreprocessorDefinitions")->addTextElement(isDebug ? "_DEBUG;%(PreprocessorDefinitions)"
+						: "NDEBUG;%(PreprocessorDefinitions)");
+					midl->createNewChildElement("MkTypLibCompatible")->addTextElement("true");
+					midl->createNewChildElement("SuppressStartupBanner")->addTextElement("true");
+					midl->createNewChildElement("TargetEnvironment")->addTextElement("Win32");
+					midl->createNewChildElement("HeaderFileName");
+				}
+
+				bool isUsingEditAndContinue = false;
+
+				{
+					XmlElement* cl = group->createNewChildElement("ClCompile");
+
+					cl->createNewChildElement("Optimization")->addTextElement(getOptimisationLevelString(config.getOptimisationLevelInt()));
+
+					if (isDebug && config.getOptimisationLevelInt() <= optimisationOff)
+					{
+						isUsingEditAndContinue = !config.is64Bit();
+
+						cl->createNewChildElement("DebugInformationFormat")
+							->addTextElement(isUsingEditAndContinue ? "EditAndContinue"
+							: "ProgramDatabase");
+					}
+
+					StringArray includePaths(getHeaderSearchPaths(config));
+					includePaths.add("%(AdditionalIncludeDirectories)");
+					cl->createNewChildElement("AdditionalIncludeDirectories")->addTextElement(includePaths.joinIntoString(";"));
+					cl->createNewChildElement("PreprocessorDefinitions")->addTextElement(getPreprocessorDefs(config, ";") + ";CG_IS_SHAREWARE=1" + ";%(PreprocessorDefinitions)");
+					cl->createNewChildElement("RuntimeLibrary")->addTextElement(config.isUsingRuntimeLibDLL() ? (isDebug ? "MultiThreadedDebugDLL" : "MultiThreadedDLL")
+						: (isDebug ? "MultiThreadedDebug" : "MultiThreaded"));
+					cl->createNewChildElement("RuntimeTypeInfo")->addTextElement("true");
+					cl->createNewChildElement("PrecompiledHeader");
+					cl->createNewChildElement("AssemblerListingLocation")->addTextElement("$(IntDir)\\");
+					cl->createNewChildElement("ObjectFileName")->addTextElement("$(IntDir)\\");
+					cl->createNewChildElement("ProgramDataBaseFileName")->addTextElement("$(IntDir)\\");
+					cl->createNewChildElement("WarningLevel")->addTextElement("Level" + String(config.getWarningLevel()));
+					cl->createNewChildElement("SuppressStartupBanner")->addTextElement("true");
+					cl->createNewChildElement("MultiProcessorCompilation")->addTextElement("true");
+
+					if (config.isFastMathEnabled())
+						cl->createNewChildElement("FloatingPointModel")->addTextElement("Fast");
+
+					const String extraFlags(replacePreprocessorTokens(config, getExtraCompilerFlagsString()).trim());
+					if (extraFlags.isNotEmpty())
+						cl->createNewChildElement("AdditionalOptions")->addTextElement(extraFlags + " %(AdditionalOptions)");
+				}
+
+				{
+					XmlElement* res = group->createNewChildElement("ResourceCompile");
+					res->createNewChildElement("PreprocessorDefinitions")->addTextElement(isDebug ? "_DEBUG;%(PreprocessorDefinitions)"
+						: "NDEBUG;%(PreprocessorDefinitions)");
+				}
+
+				{
+					XmlElement* link = group->createNewChildElement("Link");
+					link->createNewChildElement("OutputFile")->addTextElement(getOutDirFile(config, config.getOutputFilename(msvcTargetSuffix, false)));
+					link->createNewChildElement("SuppressStartupBanner")->addTextElement("true");
+					link->createNewChildElement("IgnoreSpecificDefaultLibraries")->addTextElement(isDebug ? "libcmt.lib; msvcrt.lib;;%(IgnoreSpecificDefaultLibraries)"
+						: "%(IgnoreSpecificDefaultLibraries)");
+					link->createNewChildElement("GenerateDebugInformation")->addTextElement((isDebug || config.shouldGenerateDebugSymbols()) ? "true" : "false");
+					link->createNewChildElement("ProgramDatabaseFile")->addTextElement(getIntDirFile(config, config.getOutputFilename(".pdb", true)));
+					link->createNewChildElement("SubSystem")->addTextElement(msvcIsWindowsSubsystem ? "Windows" : "Console");
+
+					if (!config.is64Bit())
+						link->createNewChildElement("TargetMachine")->addTextElement("MachineX86");
+
+					if (isUsingEditAndContinue)
+						link->createNewChildElement("ImageHasSafeExceptionHandlers")->addTextElement("false");
+
+					if (!isDebug)
+					{
+						link->createNewChildElement("OptimizeReferences")->addTextElement("true");
+						link->createNewChildElement("EnableCOMDATFolding")->addTextElement("true");
+					}
+
+					const StringArray librarySearchPaths(config.getLibrarySearchPaths());
+					if (librarySearchPaths.size() > 0)
+						link->createNewChildElement("AdditionalLibraryDirectories")->addTextElement(replacePreprocessorTokens(config, librarySearchPaths.joinIntoString(";"))
+						+ ";%(AdditionalLibraryDirectories)");
+
+					link->createNewChildElement("LargeAddressAware")->addTextElement("true");
+
+					String externalLibraries(getExternalLibrariesString());
+					if (externalLibraries.isNotEmpty())
+						link->createNewChildElement("AdditionalDependencies")->addTextElement(replacePreprocessorTokens(config, externalLibraries).trim()
+						+ ";%(AdditionalDependencies)");
+
+					String extraLinkerOptions(getExtraLinkerFlagsString());
+					if (extraLinkerOptions.isNotEmpty())
+						link->createNewChildElement("AdditionalOptions")->addTextElement(replacePreprocessorTokens(config, extraLinkerOptions).trim()
+						+ " %(AdditionalOptions)");
+
+					if (msvcDelayLoadedDLLs.isNotEmpty())
+						link->createNewChildElement("DelayLoadDLLs")->addTextElement(msvcDelayLoadedDLLs);
+
+					if (config.config[Ids::msvcModuleDefinitionFile].toString().isNotEmpty())
+						link->createNewChildElement("ModuleDefinitionFile")
+						->addTextElement(config.config[Ids::msvcModuleDefinitionFile].toString());
+				}
+
+				{
+					XmlElement* bsc = group->createNewChildElement("Bscmake");
+					bsc->createNewChildElement("SuppressStartupBanner")->addTextElement("true");
+					bsc->createNewChildElement("OutputFile")->addTextElement(getIntDirFile(config, config.getOutputFilename(".bsc", true)));
+				}
+
+				if (config.getPrebuildCommandString().isNotEmpty())
+					group->createNewChildElement("PreBuildEvent")
+					->createNewChildElement("Command")
+					->addTextElement(config.getPrebuildCommandString());
+
+				if (config.getPostbuildCommandString().isNotEmpty())
+					group->createNewChildElement("PostBuildEvent")
+					->createNewChildElement("Command")
+					->addTextElement(config.getPostbuildCommandString());
+			}
+
+			if (buildFull) {
+
+				buildConfig.setName("Full - " + originalConfigName);
+
+				const bool isDebug = config.isDebug();
+
+				XmlElement* group = projectXml.createNewChildElement("ItemDefinitionGroup");
+				setConditionAttribute(*group, config);
+
+				{
+					XmlElement* midl = group->createNewChildElement("Midl");
+					midl->createNewChildElement("PreprocessorDefinitions")->addTextElement(isDebug ? "_DEBUG;%(PreprocessorDefinitions)"
+						: "NDEBUG;%(PreprocessorDefinitions)");
+					midl->createNewChildElement("MkTypLibCompatible")->addTextElement("true");
+					midl->createNewChildElement("SuppressStartupBanner")->addTextElement("true");
+					midl->createNewChildElement("TargetEnvironment")->addTextElement("Win32");
+					midl->createNewChildElement("HeaderFileName");
+				}
+
+				bool isUsingEditAndContinue = false;
+
+				{
+					XmlElement* cl = group->createNewChildElement("ClCompile");
+
+					cl->createNewChildElement("Optimization")->addTextElement(getOptimisationLevelString(config.getOptimisationLevelInt()));
+
+					if (isDebug && config.getOptimisationLevelInt() <= optimisationOff)
+					{
+						isUsingEditAndContinue = !config.is64Bit();
+
+						cl->createNewChildElement("DebugInformationFormat")
+							->addTextElement(isUsingEditAndContinue ? "EditAndContinue"
+							: "ProgramDatabase");
+					}
+
+					StringArray includePaths(getHeaderSearchPaths(config));
+					includePaths.add("%(AdditionalIncludeDirectories)");
+					cl->createNewChildElement("AdditionalIncludeDirectories")->addTextElement(includePaths.joinIntoString(";"));
+					cl->createNewChildElement("PreprocessorDefinitions")->addTextElement(getPreprocessorDefs(config, ";") + ";CG_IS_FULL=1" + ";%(PreprocessorDefinitions)");
+					cl->createNewChildElement("RuntimeLibrary")->addTextElement(config.isUsingRuntimeLibDLL() ? (isDebug ? "MultiThreadedDebugDLL" : "MultiThreadedDLL")
+						: (isDebug ? "MultiThreadedDebug" : "MultiThreaded"));
+					cl->createNewChildElement("RuntimeTypeInfo")->addTextElement("true");
+					cl->createNewChildElement("PrecompiledHeader");
+					cl->createNewChildElement("AssemblerListingLocation")->addTextElement("$(IntDir)\\");
+					cl->createNewChildElement("ObjectFileName")->addTextElement("$(IntDir)\\");
+					cl->createNewChildElement("ProgramDataBaseFileName")->addTextElement("$(IntDir)\\");
+					cl->createNewChildElement("WarningLevel")->addTextElement("Level" + String(config.getWarningLevel()));
+					cl->createNewChildElement("SuppressStartupBanner")->addTextElement("true");
+					cl->createNewChildElement("MultiProcessorCompilation")->addTextElement("true");
+
+					if (config.isFastMathEnabled())
+						cl->createNewChildElement("FloatingPointModel")->addTextElement("Fast");
+
+					const String extraFlags(replacePreprocessorTokens(config, getExtraCompilerFlagsString()).trim());
+					if (extraFlags.isNotEmpty())
+						cl->createNewChildElement("AdditionalOptions")->addTextElement(extraFlags + " %(AdditionalOptions)");
+				}
+
+				{
+					XmlElement* res = group->createNewChildElement("ResourceCompile");
+					res->createNewChildElement("PreprocessorDefinitions")->addTextElement(isDebug ? "_DEBUG;%(PreprocessorDefinitions)"
+						: "NDEBUG;%(PreprocessorDefinitions)");
+				}
+
+				{
+					XmlElement* link = group->createNewChildElement("Link");
+					link->createNewChildElement("OutputFile")->addTextElement(getOutDirFile(config, config.getOutputFilename(msvcTargetSuffix, false)));
+					link->createNewChildElement("SuppressStartupBanner")->addTextElement("true");
+					link->createNewChildElement("IgnoreSpecificDefaultLibraries")->addTextElement(isDebug ? "libcmt.lib; msvcrt.lib;;%(IgnoreSpecificDefaultLibraries)"
+						: "%(IgnoreSpecificDefaultLibraries)");
+					link->createNewChildElement("GenerateDebugInformation")->addTextElement((isDebug || config.shouldGenerateDebugSymbols()) ? "true" : "false");
+					link->createNewChildElement("ProgramDatabaseFile")->addTextElement(getIntDirFile(config, config.getOutputFilename(".pdb", true)));
+					link->createNewChildElement("SubSystem")->addTextElement(msvcIsWindowsSubsystem ? "Windows" : "Console");
+
+					if (!config.is64Bit())
+						link->createNewChildElement("TargetMachine")->addTextElement("MachineX86");
+
+					if (isUsingEditAndContinue)
+						link->createNewChildElement("ImageHasSafeExceptionHandlers")->addTextElement("false");
+
+					if (!isDebug)
+					{
+						link->createNewChildElement("OptimizeReferences")->addTextElement("true");
+						link->createNewChildElement("EnableCOMDATFolding")->addTextElement("true");
+					}
+
+					const StringArray librarySearchPaths(config.getLibrarySearchPaths());
+					if (librarySearchPaths.size() > 0)
+						link->createNewChildElement("AdditionalLibraryDirectories")->addTextElement(replacePreprocessorTokens(config, librarySearchPaths.joinIntoString(";"))
+						+ ";%(AdditionalLibraryDirectories)");
+
+					link->createNewChildElement("LargeAddressAware")->addTextElement("true");
+
+					String externalLibraries(getExternalLibrariesString());
+					if (externalLibraries.isNotEmpty())
+						link->createNewChildElement("AdditionalDependencies")->addTextElement(replacePreprocessorTokens(config, externalLibraries).trim()
+						+ ";%(AdditionalDependencies)");
+
+					String extraLinkerOptions(getExtraLinkerFlagsString());
+					if (extraLinkerOptions.isNotEmpty())
+						link->createNewChildElement("AdditionalOptions")->addTextElement(replacePreprocessorTokens(config, extraLinkerOptions).trim()
+						+ " %(AdditionalOptions)");
+
+					if (msvcDelayLoadedDLLs.isNotEmpty())
+						link->createNewChildElement("DelayLoadDLLs")->addTextElement(msvcDelayLoadedDLLs);
+
+					if (config.config[Ids::msvcModuleDefinitionFile].toString().isNotEmpty())
+						link->createNewChildElement("ModuleDefinitionFile")
+						->addTextElement(config.config[Ids::msvcModuleDefinitionFile].toString());
+				}
+
+				{
+					XmlElement* bsc = group->createNewChildElement("Bscmake");
+					bsc->createNewChildElement("SuppressStartupBanner")->addTextElement("true");
+					bsc->createNewChildElement("OutputFile")->addTextElement(getIntDirFile(config, config.getOutputFilename(".bsc", true)));
+				}
+
+				if (config.getPrebuildCommandString().isNotEmpty())
+					group->createNewChildElement("PreBuildEvent")
+					->createNewChildElement("Command")
+					->addTextElement(config.getPrebuildCommandString());
+
+				if (config.getPostbuildCommandString().isNotEmpty())
+					group->createNewChildElement("PostBuildEvent")
+					->createNewChildElement("Command")
+					->addTextElement(config.getPostbuildCommandString());
+			}
+
+			buildConfig.setName(originalConfigName);
         }
 
         ScopedPointer<XmlElement> otherFilesGroup (new XmlElement ("ItemGroup"));

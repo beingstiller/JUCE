@@ -191,6 +191,7 @@ public:
         //==============================================================================
         Value getNameValue()                                { return getValue (Ids::name); }
         String getName() const                              { return config [Ids::name]; }
+		void setName(const String& name)                    { config.setProperty(Ids::name, name, getUndoManager()); }
 
         Value isDebugValue()                                { return getValue (Ids::isDebug); }
         bool isDebug() const                                { return config [Ids::isDebug]; }
